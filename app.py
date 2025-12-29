@@ -6,10 +6,11 @@ import os
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Diseñador de Pisos Versátil", layout="wide")
-st.title("🎨 Diseñador de Pisos Versátil v1.0")
+st.title("🟦 Diseñador de Pisos Versátil v2.0 (Con Filos)")
 
 # --- Product Constants ---
-TAMANO_BALDOSA_M = 0.25 # <-- TAMAÑO ACTUALIZADO
+TAMANO_BALDOSA_M = 0.25 
+TAMANO_BORDE_M = 0.05   # <-- NUEVO: Medida del filo para Versátil (5cm)
 
 # --- Sidebar: Input Parameters ---
 st.sidebar.header("1. Dimensiones del Área")
@@ -26,11 +27,19 @@ else:
 
 # --- Sidebar: Prices and Colors ---
 st.sidebar.header("2. Precios y Colores")
-precio_m2 = st.sidebar.number_input("Precio por m² de baldosa ($)", min_value=0.0, step=0.5, value=17.50) # <-- PRECIO ACTUALIZADO
+precio_m2 = st.sidebar.number_input("Precio por m² de baldosa ($)", min_value=0.0, step=0.5, value=17.50)
+# Nuevos precios para accesorios
+precio_borde_unitario = st.sidebar.number_input("Precio por pieza de borde ($)", min_value=0.0, step=0.05, value=0.60)
+precio_esquinero_unitario = st.sidebar.number_input("Precio por esquinero ($)", min_value=0.0, step=0.05, value=0.35)
 
 # Paleta de colores actualizada para Piso Versátil
 PALETA = ["Negro", "Rojo", "Azul", "Blanco", "Amarillo", "Naranja", "Gris"]
 color = st.sidebar.selectbox("Color principal de baldosas", PALETA)
+color_borde = st.sidebar.selectbox(
+    "Color de bordes y esquineros",
+    PALETA,
+    index=0 # Default a Negro
+)
 
 # --- Main Calculation Logic ---
 baldosas_enteras_ancho = math.floor(ancho_m / TAMANO_BALDOSA_M)
@@ -44,8 +53,8 @@ espacio_sobrante_largo = largo_m - espacio_cubierto_largo
 st.sidebar.header("3. Acabado de los Extremos")
 st.sidebar.info(f"Ancho: {baldosas_enteras_ancho} baldosas enteras cubren {espacio_cubierto_ancho:.2f}m. Faltan **{espacio_sobrante_ancho*100:.1f} cm**.")
 
-# Opciones de acabado simplificadas
-opciones_acabado = ["Nada", "Completar con Pieza Cortada"]
+# Se reintroduce la opción de Borde / Filo
+opciones_acabado = ["Nada", "Borde / Filo", "Completar con Pieza Cortada"]
 col_izq, col_der = st.sidebar.columns(2)
 acabado_izquierdo = col_izq.selectbox("Acabado Izquierda", opciones_acabado, key="acabado_izq")
 acabado_derecho = col_der.selectbox("Acabado Derecha", opciones_acabado, key="acabado_der")
@@ -57,6 +66,7 @@ acabado_abajo = col_abj.selectbox("Acabado Abajo", opciones_acabado, key="acabad
 
 # --- Calculate pieces to dispatch and final dimensions ---
 piezas_ancho_despachar = baldosas_enteras_ancho
+dim_final_ancho = espacio_cubierto_ancho
 ancho_necesita_corte = False
 if acabado_izquierdo == "Completar con Pieza Cortada":
     piezas_ancho_despachar += 1
@@ -64,9 +74,13 @@ if acabado_izquierdo == "Completar con Pieza Cortada":
 if acabado_derecho == "Completar con Pieza Cortada" and acabado_izquierdo != "Completar con Pieza Cortada":
     piezas_ancho_despachar += 1
     ancho_necesita_corte = True
-dim_final_ancho = ancho_m if ancho_necesita_corte else espacio_cubierto_ancho
+# Lógica de suma de dimensión por bordes
+if acabado_izquierdo == "Borde / Filo": dim_final_ancho += TAMANO_BORDE_M
+if acabado_derecho == "Borde / Filo": dim_final_ancho += TAMANO_BORDE_M
+if ancho_necesita_corte: dim_final_ancho = ancho_m
 
 piezas_largo_despachar = baldosas_enteras_largo
+dim_final_largo = espacio_cubierto_largo
 largo_necesita_corte = False
 if acabado_arriba == "Completar con Pieza Cortada":
     piezas_largo_despachar += 1
@@ -74,7 +88,32 @@ if acabado_arriba == "Completar con Pieza Cortada":
 if acabado_abajo == "Completar con Pieza Cortada" and acabado_arriba != "Completar con Pieza Cortada":
     piezas_largo_despachar += 1
     largo_necesita_corte = True
-dim_final_largo = largo_m if largo_necesita_corte else espacio_cubierto_largo
+# Lógica de suma de dimensión por bordes
+if acabado_arriba == "Borde / Filo": dim_final_largo += TAMANO_BORDE_M
+if acabado_abajo == "Borde / Filo": dim_final_largo += TAMANO_BORDE_M
+if largo_necesita_corte: dim_final_largo = largo_m
+
+# --- Count Borders and Corners (NUEVO BLOQUE) ---
+bordes = {
+    "izquierda": 1 if acabado_izquierdo == "Borde / Filo" else 0,
+    "derecha":   1 if acabado_derecho == "Borde / Filo" else 0,
+    "arriba":    1 if acabado_arriba == "Borde / Filo" else 0,
+    "abajo":     1 if acabado_abajo == "Borde / Filo" else 0,
+}
+
+piezas_borde_izquierda = piezas_largo_despachar if bordes["izquierda"] else 0
+piezas_borde_derecha = piezas_largo_despachar if bordes["derecha"] else 0
+piezas_borde_arriba = piezas_ancho_despachar if bordes["arriba"] else 0
+piezas_borde_abajo = piezas_ancho_despachar if bordes["abajo"] else 0
+total_piezas_borde = piezas_borde_izquierda + piezas_borde_derecha + piezas_borde_arriba + piezas_borde_abajo
+
+esquineros = {
+    "sup_izq": 1 if (bordes["arriba"] and bordes["izquierda"]) else 0,
+    "sup_der": 1 if (bordes["arriba"] and bordes["derecha"]) else 0,
+    "inf_izq": 1 if (bordes["abajo"] and bordes["izquierda"]) else 0,
+    "inf_der": 1 if (bordes["abajo"] and bordes["derecha"]) else 0,
+}
+esquineros_total = sum(esquineros.values())
 
 
 # --- Color Grid Logic ---
@@ -214,11 +253,19 @@ st.write(f"**Dimensión final cubierta:** {dim_final_ancho:.2f} m × {dim_final_
 
 total_baldosas = piezas_ancho_despachar * piezas_largo_despachar
 precio_por_baldosa = precio_m2 * (TAMANO_BALDOSA_M ** 2)
-costo_total = total_baldosas * precio_por_baldosa
+costo_baldosas = total_baldosas * precio_por_baldosa
+costo_bordes = total_piezas_borde * precio_borde_unitario
+costo_esquineros = esquineros_total * precio_esquinero_unitario
+costo_total = costo_baldosas + costo_bordes + costo_esquineros
 
 st.write(f"**Baldosas a despachar:** {total_baldosas} ({piezas_ancho_despachar} x {piezas_largo_despachar})")
+st.write(f"**Piezas de borde a despachar:** {total_piezas_borde}")
+st.write(f"**Esquineros a despachar:** {esquineros_total}")
 
 st.subheader("💰 Cotización Estimada")
+st.write(f"- Costo de Baldosas: ${costo_baldosas:,.2f}")
+st.write(f"- Costo de Bordes: ${costo_bordes:,.2f}")
+st.write(f"- Costo de Esquineros: ${costo_esquineros:,.2f}")
 st.success(f"**Total Estimado:** ${costo_total:,.2f}")
 
 # --- Photorealistic Preview with Pillow ---
@@ -230,9 +277,11 @@ def load_images(color_palette):
     images = {}
     try:
         for color_name in color_palette:
-            # Carga solo baldosas, ya no hay bordes ni esquineros
+            # ACTUALIZADO: Ahora carga bordes y esquineros también
             images[color_name] = {
-                "baldosa": Image.open(os.path.join("imagenes", color_name, "baldosa.png")).convert("RGBA")
+                "baldosa": Image.open(os.path.join("imagenes", color_name, "baldosa.png")).convert("RGBA"),
+                "borde": Image.open(os.path.join("imagenes", color_name, "borde.png")).convert("RGBA"),
+                "esquinero": Image.open(os.path.join("imagenes", color_name, "esquinero.png")).convert("RGBA"),
             }
         images["marca_de_agua"] = Image.open(os.path.join("imagenes", "marca_de_agua", "logo_marca.png")).convert("RGBA")
         return images
@@ -263,44 +312,89 @@ loaded_images = load_images(PALETA)
 
 if loaded_images:
     tile_w, tile_h = loaded_images[color]["baldosa"].size
+    border_w, border_h = loaded_images[color_borde]["borde"].size 
+    
+    # El grosor visual del borde en pixeles (usamos el min por si la imagen está rotada/vertical)
+    border_thickness = min(border_w, border_h)
     
     grid_w_px = piezas_ancho * tile_w
     grid_h_px = piezas_largo * tile_h
     
-    # Ya no hay extras por bordes
-    img_w = grid_w_px
-    img_h = grid_h_px
+    # Calcular offsets si hay bordes
+    extra_left = border_thickness if bordes["izquierda"] else 0
+    extra_right = border_thickness if bordes["derecha"] else 0
+    extra_top = border_thickness if bordes["arriba"] else 0
+    extra_bot = border_thickness if bordes["abajo"] else 0
+
+    img_w = grid_w_px + extra_left + extra_right
+    img_h = grid_h_px + extra_top + extra_bot
 
     canvas = Image.new("RGBA", (img_w, img_h), (255, 255, 255, 255))
 
+    # 1. Dibujar Baldosas
     for r in range(piezas_largo):
         for c in range(piezas_ancho):
             tile_color_name = st.session_state["grid_colors"][r][c]
             tile_img = loaded_images[tile_color_name]["baldosa"]
-            pos_x = c * tile_w
-            pos_y = r * tile_h
+            pos_x = extra_left + c * tile_w
+            pos_y = extra_top + r * tile_h
             canvas.paste(tile_img, (pos_x, pos_y), tile_img)
     
-    # Lógica simplificada de líneas de corte
+    # 2. Preparar Assets de Borde
+    borde_base = loaded_images[color_borde]["borde"]
+    esquinero_base = loaded_images[color_borde]["esquinero"]
+
+    borde_derecho = borde_base
+    borde_izquierdo = borde_base.transpose(Image.FLIP_LEFT_RIGHT)
+    borde_abajo = borde_base.rotate(90, expand=True)
+    borde_arriba = borde_base.rotate(-90, expand=True)
+
+    esquinero_sup_izq = esquinero_base
+    esquinero_sup_der = esquinero_base.transpose(Image.FLIP_LEFT_RIGHT)
+    esquinero_inf_izq = esquinero_base.transpose(Image.FLIP_TOP_BOTTOM)
+    esquinero_inf_der = esquinero_sup_der.transpose(Image.FLIP_TOP_BOTTOM)
+    
+    # 3. Dibujar Bordes
+    if bordes["derecha"]:
+        for r in range(piezas_largo_despachar):
+            canvas.paste(borde_derecho, (img_w - border_thickness, extra_top + r * tile_h), borde_derecho)
+    if bordes["izquierda"]:
+        for r in range(piezas_largo_despachar):
+            canvas.paste(borde_izquierdo, (0, extra_top + r * tile_h), borde_izquierdo)
+    if bordes["abajo"]:
+        for c in range(piezas_ancho_despachar):
+            canvas.paste(borde_abajo, (extra_left + c * tile_w, img_h - border_thickness), borde_abajo)
+    if bordes["arriba"]:
+        for c in range(piezas_ancho_despachar):
+            canvas.paste(borde_arriba, (extra_left + c * tile_w, 0), borde_arriba)
+    
+    # 4. Dibujar Esquineros
+    esquinero_w, esquinero_h = esquinero_base.size
+    if esquineros["sup_izq"]: canvas.paste(esquinero_sup_izq, (0, 0), esquinero_sup_izq)
+    if esquineros["sup_der"]: canvas.paste(esquinero_sup_der, (img_w - esquinero_w, 0), esquinero_sup_der)
+    if esquineros["inf_izq"]: canvas.paste(esquinero_inf_izq, (0, img_h - esquinero_h), esquinero_inf_izq)
+    if esquineros["inf_der"]: canvas.paste(esquinero_inf_der, (img_w - esquinero_w, img_h - esquinero_h), esquinero_inf_der)
+    
+    # 5. Dibujar Líneas de Corte (Ajustadas por offset)
     draw = ImageDraw.Draw(canvas)
 
     if acabado_derecho == "Completar con Pieza Cortada":
-        cut_x = (piezas_ancho - 1) * tile_w + (tile_w / 2)
+        cut_x = extra_left + (piezas_ancho - 1) * tile_w + (tile_w / 2)
         draw_dashed_line(draw, (cut_x, 0), (cut_x, img_h))
     
     if acabado_izquierdo == "Completar con Pieza Cortada":
-        cut_x = tile_w / 2
+        cut_x = extra_left + (tile_w / 2)
         draw_dashed_line(draw, (cut_x, 0), (cut_x, img_h))
 
     if acabado_abajo == "Completar con Pieza Cortada":
-        cut_y = (piezas_largo - 1) * tile_h + (tile_h / 2)
+        cut_y = extra_top + (piezas_largo - 1) * tile_h + (tile_h / 2)
         draw_dashed_line(draw, (0, cut_y), (img_w, cut_y))
 
     if acabado_arriba == "Completar con Pieza Cortada":
-        cut_y = tile_h / 2
+        cut_y = extra_top + (tile_h / 2)
         draw_dashed_line(draw, (0, cut_y), (img_w, cut_y))
 
-    # Lógica para marca de agua
+    # 6. Marca de Agua
     watermark = loaded_images["marca_de_agua"]
     wm_w, wm_h = watermark.size
     scale_factor = 0.8
@@ -311,7 +405,7 @@ if loaded_images:
     pos_wm_y = (img_h - new_wm_h) // 2
     canvas.paste(resized_wm, (pos_wm_x, pos_wm_y), resized_wm)
     
-    # Lógica para mostrar imagen
+    # 7. Display
     MAX_DISPLAY_WIDTH = 800
     if canvas.width > MAX_DISPLAY_WIDTH:
         aspect_ratio = canvas.height / canvas.width
@@ -355,10 +449,14 @@ RESUMEN DEL DISEÑO
 DESGLOSE DE MATERIALES A DESPACHAR
 ----------------------------------------
 {desglose_baldosas_texto}
+- Piezas de borde ({color_borde}): {total_piezas_borde} unidades
+- Esquineros ({color_borde}): {esquineros_total} unidades
 ----------------------------------------
 DESGLOSE DE COSTOS
 ----------------------------------------
-- Costo de Baldosas: ${costo_total:,.2f}
+- Costo de Baldosas: ${costo_baldosas:,.2f}
+- Costo de Bordes: ${costo_bordes:,.2f}
+- Costo de Esquineros: ${costo_esquineros:,.2f}
 ----------------------------------------
 TOTAL ESTIMADO: ${costo_total:,.2f}
 ========================================
@@ -371,7 +469,18 @@ st.text_area(
     help="Haz clic en el cuadro, presiona Ctrl+A (o Cmd+A en Mac) para seleccionar todo, y luego Ctrl+C (o Cmd+C) para copiar."
 )
 
-st.subheader("Desglose de Baldosas por Color")
-if tile_counts:
-    st.table({"Color": list(tile_counts.keys()), "Cantidad": list(tile_counts.values())})
-st.caption(f"Total baldosas: {total_baldosas}")
+colA, colB, colC = st.columns(3)
+with colA:
+    st.markdown("**Baldosas por color**")
+    if tile_counts:
+        st.table({"Color": list(tile_counts.keys()), "Cantidad": list(tile_counts.values())})
+    st.caption(f"Total baldosas: {total_baldosas}")
+with colB:
+    st.markdown(f"**Bordes** (color: {color_borde})")
+    data_bordes = {"Lado": ["Arriba", "Abajo", "Izquierda", "Derecha"], "Cantidad": [piezas_borde_arriba, piezas_borde_abajo, piezas_borde_izquierda, piezas_borde_derecha]}
+    st.table(data_bordes)
+    st.caption(f"Total bordes: {total_piezas_borde}")
+with colC:
+    st.markdown(f"**Esquineros** (color: {color_borde})")
+    st.table({"Esquina": ["Sup. Izq.", "Sup. Der.", "Inf. Izq.", "Inf. Der."], "Cantidad": [esquineros["sup_izq"], esquineros["sup_der"], esquineros["inf_izq"], esquineros["inf_der"]]})
+    st.caption(f"Total esquineros: {esquineros_total}")
